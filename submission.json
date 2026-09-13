@@ -1,0 +1,149 @@
+{
+  "api_key": "IVY26-B367969111EC",
+  "candidate": {
+    "name": "Divyansh Meena",
+    "email": "divyanshmeena5678@gmail.com",
+    "repo_url": "YOUR GITHUB REPO URL",
+    "demo_url": "YOUR VERCEL/NETLIFY URL"
+  },
+  "answers": {
+    "total_listing_records": 3800,
+    "unique_properties": 3791,
+    "active_listings": 2998,
+    "corrupt_listing_ids": [
+      "100-3000174",
+      "100-3000236",
+      "100-3000608",
+      "100-3001067",
+      "100-3001543",
+      "100-3001548",
+      "100-3002344",
+      "100-3003022",
+      "DWE-3000235",
+      "DWE-3000299",
+      "DWE-3001307",
+      "DWE-3001849",
+      "DWE-3003186",
+      "MAG-3000932",
+      "MAG-3001263",
+      "MAG-3001979",
+      "MAG-3001986",
+      "SQU-3000419",
+      "SQU-3000591",
+      "SQU-3001698",
+      "ZER-3000380"
+    ],
+    "total_monthly_rent": 5184200,
+    "avg_price_per_sqft_2bhk": 18314.23,
+    "costliest_project": {
+      "project_id": "P30288",
+      "price_max_inr": 44700000
+    },
+    "listings_last_7_days": 128,
+    "fake_listing_ids": [
+      "100-3001372",
+      "100-3002878",
+      "MAG-3000012",
+      "MAG-3001311",
+      "MAG-3001932",
+      "SQU-3000349",
+      "ZER-3000796"
+    ],
+    "projects_with_wrong_listing_count": 95
+  },
+  "findings": [
+    {
+      "endpoint": "*",
+      "category": "auth",
+      "documented": "Append API key as query parameter ?api_key=...",
+      "actual": "API key must be sent in the X-API-Key request header, query parameter throws 401.",
+      "how_found": "Failed immediately on first request to /auth/login.",
+      "impact": "Complete blocker for accessing any data.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/auth/login",
+      "category": "auth",
+      "documented": "Returns 'token' that is valid for 24 hours (86400s) with no refresh flow.",
+      "actual": "Returns 'access_token' that is valid for only 15 minutes (900s), and includes a 'refresh_token'.",
+      "how_found": "Observed the JSON response body from /auth/login.",
+      "impact": "Authentication expires mid-session requiring undocumented refresh implementation.",
+      "evidence": []
+    },
+    {
+      "endpoint": "*",
+      "category": "pagination",
+      "documented": "Takes 'page' parameter for pagination.",
+      "actual": "The 'page' parameter is completely ignored. The API expects an 'offset' parameter instead.",
+      "how_found": "Getting page 1 and page 2 returned the exact same listings. Swapping to offset worked.",
+      "impact": "Causes infinite loops or exact duplicate data downloads if following the documentation.",
+      "evidence": []
+    },
+    {
+      "endpoint": "*",
+      "category": "pagination",
+      "documented": "Maximum limit is 200.",
+      "actual": "The maximum records returned per page is hard-capped at 50, regardless of limit requested.",
+      "how_found": "Requesting limit=200 consistently returns exactly 50 records.",
+      "impact": "Requires 4x as many requests to fetch the full dataset.",
+      "evidence": []
+    },
+    {
+      "endpoint": "*",
+      "category": "completeness",
+      "documented": "'total' is the exact number of records matching your filters.",
+      "actual": "The 'total' count is mathematically incorrect. e.g. /v1/listings claims 3540 total but returns 3800 records.",
+      "how_found": "Counted all distinct records retrieved by pagination and compared against the 'total' field.",
+      "impact": "Pagination loop breaks early if developers rely on 'total' to stop fetching.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "completeness",
+      "documented": "Returns active sale listings. Inactive listings are excluded server side.",
+      "actual": "It returns both active and inactive listings. You must filter by 'is_live' on the client side.",
+      "how_found": "Found 710 listings in the payload where 'is_live' is false.",
+      "impact": "Frontend will display unavailable properties to users if they trust the documentation.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/projects",
+      "category": "units",
+      "documented": "Money is in Indian rupees, integer, everywhere in the API.",
+      "actual": "project 'price_min' and 'price_max' are returned as floats in Lakhs or Crores, not INR integers.",
+      "how_found": "Found values like 3.22 and 80.0, which translate to Crores and Lakhs respectively.",
+      "impact": "A 4 Crore project will show as 'Rs. 4' on the frontend.",
+      "evidence": [
+        "P30001",
+        "P30009"
+      ]
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "duplicates",
+      "documented": "Every listing_id corresponds to exactly one physical property.",
+      "actual": "Identical physical properties are duplicated across different listing_ids (cross-posted on different websites).",
+      "how_found": "Grouped listings by apartment, floor, area, and facing, and found identical units listed multiple times.",
+      "impact": "Analytics/counts of unique housing supply will be slightly inflated.",
+      "evidence": []
+    },
+    {
+      "endpoint": "*",
+      "category": "timestamps",
+      "documented": "Timestamps are ISO 8601, UTC, Z suffix.",
+      "actual": "Timestamps lack the Z suffix and are actually served in IST (+05:30).",
+      "how_found": "Checked the /health endpoint which explicitly defines the server timezone as Asia/Kolkata +05:30.",
+      "impact": "Time-based filters (like 'last 7 days') will be shifted by 5.5 hours.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "filters",
+      "documented": "The 'total_listings' count in a project agrees with what GET /v1/listings?project_id=... returns.",
+      "actual": "The project_id filter on /v1/listings is completely ignored by the server.",
+      "how_found": "Requesting /v1/listings?project_id=P30004 returns all listings, totally ignoring the filter.",
+      "impact": "Cannot fetch listings for a specific project without downloading the entire database.",
+      "evidence": []
+    }
+  ]
+}
